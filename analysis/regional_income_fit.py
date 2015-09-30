@@ -435,6 +435,7 @@ def main(argv):
             print '%d---------GEOFIPS %s FAILED!!!----------\n' % (count, geo)
 
     print 'done!'
+    return 0
 
 
 if __name__ == "__main__":

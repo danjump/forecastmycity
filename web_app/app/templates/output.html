@@ -22,7 +22,8 @@
 <!-- Just for debugging purposes. Don't actually copy these 2 lines! -->
 <!--[if lt IE 9]><script src="../../assets/js/ie8-responsive-file-warning.js"></script><![endif]-->
 <script src="../../assets/js/ie-emulation-modes-warning.js"></script>
-
+<script type="text/javascript" src="http://kozea.github.com/pygal.js/javascripts/svg.jquery.js"></script>
+<script type="text/javascript" src="http://kozea.github.com/pygal.js/javascripts/pygal-tooltips.js"></script>
 <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
 <!--[if lt IE 9]>
       <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
@@ -41,7 +42,7 @@
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
             </button>
-            <a class="navbar-brand" href="#">Project name</a>
+            <a class="navbar-brand" href="#">ForecastMyCity</a>
         </div>
         <div id="navbar" class="collapse navbar-collapse">
             <ul class="nav navbar-nav">
@@ -55,53 +56,28 @@
 
 <br><br> 
 
-<div class="container">
-    <div class="starter-template">
-        <h2>Output Page</h2>
-        <p>Enter some user input</p>
-    </div>
 
-    <div class = "container">
-
-        <form  action="/output" method="GET">
-            <div class="form-group">
-                <label for="ID">City  Name:</label>
-                <input type="text" id="ID" name='ID' placeholder="e.g. ">
-            </div>
-            <div>
-                <button type="submit" class="btn btn-default btn-lg">Find this city!</button>
-            </div>
-        </form>
-    </div>
-    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
-    <script src="static/js/bootstrap.min.js"></script>
-
-</div> <!-- /.container-->
 
 <div class="container">
     <div class="starter-template">
         <h3>Results:</h3>
-        <p class="lead">Below is the result of your query.<br> You just took user input and looked up the information. Now we need to expand the functionality!</p>
+        <p class="lead">Below is a list of the cities with the top economy in the {{ industry }} industry.</p>
     </div>
 
+    <div class="col-lg-5">
     <table class="table table-hover">
-        <tr><th>Region</th><th>2001</th><th>2002</th><th>2003</th><th>2004</th><th>2005</th><th>2006</th><th>2007</th>
-            <th>2008</th><th>2009</th><th>2010</th><th>2011</th><th>2012</th><th>2013</th></tr>
-        {% for city in cities %}
-        <tr><td>{{ city['region'] }}</td><td>{{ city['2001']}}</td><td>{{ city['2002']}}</td>
-            <td>{{ city['2003']}}</td><td>{{ city['2004']}}</td><td>{{ city['2005']}}</td>
-            <td>{{ city['2006']}}</td><td>{{ city['2007']}}</td><td>{{ city['2008']}}</td>
-            <td>{{ city['2009']}}</td><td>{{ city['2010']}}</td><td>{{ city['2011']}}</td>
-            <td>{{ city['2012']}}</td><td>{{ city['2013']}}</td><</tr>
-        {% endfor %}
+    <tr><th>Name</th><th>Recent Economy</th><th>Projected Economy</th></tr>
+    {% for result in result_list %}
+    <tr><td>{{ result['name'] }}</td><td>{{ result['recent']}}</td><td> {{ result['forecast'] }}</td></tr>
+    {% endfor %}
     </table>
-        </div><!-- /.container -->
+    </div>
+
+    <div class="col-lg-6">
+        {{ chart.render()| safe }}
+    </div>
 
    <div class="container">
-         <div class="starter-template">
-               <h3>Another Result:</h3>
-               <p class="lead">Now we've taken the input and called a function from your package.<br>The result is {{the_result}}</p>
-             </div>
 
 
          <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>

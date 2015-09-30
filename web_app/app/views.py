@@ -1,13 +1,12 @@
 import MySQLdb as mdb
 import pandas as pd
+import numpy as np
+import pygal
 from flask import render_template, request
 from app import app
-from a_Model import ModelIt
 
 
 @app.route('/')
-
-
 @app.route('/index')
 def index():
     user = {'nickname': 'Miguel'}  # fake user
@@ -55,27 +54,47 @@ def cities_input():
     return render_template('input.html')
 
 
+def read_results_shelf(infile):
+    import shelve
+    readshelf = shelve.open(infile, 'r')
+    indata = readshelf['args_dict']
+
+    readshelf.close()
+
+    result_dict = {'data_x': indata['train_years'],
+                   'data_y': indata['train_values'],
+                   'pred_y': indata['train_pred'],
+                   'score': indata['train_score'],
+                   'forecast_x': indata['proj_years'],
+                   'forecast_y': indata['proj_pred']}
+    return result_dict
+
+
 @app.route('/output')
 def cities_output():
-    db = mdb.connect(user='danielj', host='localhost',
-                     db='ecotest',  charset='utf8')
-    # pull 'ID' from input field and store it
-    city = request.args.get('ID')
+    industry = request.args.get('Industry')
 
-    with db:
-        # just select the city from the world_innodb that the user inputs
-        sql_query = 'SELECT gdp.2001, gdp.2002, gdp.2003, gdp.2004, gdp.2005, '\
-                    'gdp.2006, gdp.2007, gdp.2008, gdp.2009, gdp.2010, '\
-                    'gdp.2011, gdp.2012, gdp.2013, region '\
-                    'FROM norm_gdp_per_msa_all_industry gdp '\
-                    'WHERE region LIKE \'%%%s%%\';' % city
-        df = pd.read_sql(sql_query, con=db)
+    result_list = [{'name': 'City 1', 'recent': 100, 'forecast': 110},
+                   {'name': 'City 2', 'recent': 100, 'forecast': 90}]
 
-    cities = df.to_dict(orient='records')
+    infile = '../analysis/results/regional_income/backup/'\
+        'results_g12020_irettrd_w4_t0.shelf'
 
-    # call a function from a_Model package.
-    # note we are only pulling one result in the query
-    pop_input = cities[0]['2008']
-    the_result = ModelIt(city, pop_input)
-    return render_template('output.html', cities=cities,
-                           the_result=the_result)
+    results = read_results_shelf(infile)
+
+    x_range = np.append(results['data_x'], results['forecast_x'])
+    x_range = x_range.astype(int)
+    data_df = pd.DataFrame({'year': results['data_x'],
+                            'values': results['data_y']})
+
+    data_input = []
+    for yr, val in zip(data_df['year'].values, data_df['values'].values):
+        data_input.append((yr, val))
+
+    chart = pygal.XY(disable_xml_declaration=True, width=800, height=350)
+    chart.title = 'Browser usage evolution'
+    chart.x_labels = map(int, range(1965, x_range[-1]+5, 5))
+    chart.add('Data', data_input)
+
+    return render_template('output.html', industry=industry,
+                           result_list=result_list, chart=chart)

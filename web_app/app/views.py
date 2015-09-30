@@ -1,9 +1,10 @@
 import MySQLdb as mdb
-import pandas as pd
-import numpy as np
+# import pandas as pd
+# import numpy as np
 import pygal
 from flask import render_template, request
 from app import app
+from sqlalchemy import create_engine
 
 
 @app.route('/')
@@ -54,20 +55,19 @@ def cities_input():
     return render_template('input.html')
 
 
-def read_results_shelf(infile):
-    import shelve
-    readshelf = shelve.open(infile, 'r')
-    indata = readshelf['args_dict']
+def get_datapoint_from_sql(case, industry, geofips):
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    con = engine.connect()
 
-    readshelf.close()
+    query = 'SELECT x, y FROM data'\
+        'WHERE data.case="%s" and geofips="%s" and industry="%s"' %\
+        (case, geofips, industry)
 
-    result_dict = {'data_x': indata['train_years'],
-                   'data_y': indata['train_values'],
-                   'pred_y': indata['train_pred'],
-                   'score': indata['train_score'],
-                   'forecast_x': indata['proj_years'],
-                   'forecast_y': indata['proj_pred']}
-    return result_dict
+    df = pd.read_sql(query, con=con.connection)
+
+    data = [(1990, 1), (2000, 2)]
+
+    return data
 
 
 @app.route('/output')
@@ -77,23 +77,11 @@ def cities_output():
     result_list = [{'name': 'City 1', 'recent': 100, 'forecast': 110},
                    {'name': 'City 2', 'recent': 100, 'forecast': 90}]
 
-    infile = '../analysis/results/regional_income/backup/'\
-        'results_g12020_irettrd_w4_t0.shelf'
-
-    results = read_results_shelf(infile)
-
-    x_range = np.append(results['data_x'], results['forecast_x'])
-    x_range = x_range.astype(int)
-    data_df = pd.DataFrame({'year': results['data_x'],
-                            'values': results['data_y']})
-
-    data_input = []
-    for yr, val in zip(data_df['year'].values, data_df['values'].values):
-        data_input.append((yr, val))
+    data_input = get_datapoints_from_sql('data_full', 'manf', '25180')
 
     chart = pygal.XY(disable_xml_declaration=True, width=800, height=350)
     chart.title = 'Browser usage evolution'
-    chart.x_labels = map(int, range(1965, x_range[-1]+5, 5))
+    chart.x_labels = map(int, range(1965, 2025, 5))
     chart.add('Data', data_input)
 
     return render_template('output.html', industry=industry,

@@ -1,5 +1,5 @@
 import MySQLdb as mdb
-# import pandas as pd
+import pandas as pd
 # import numpy as np
 import pygal
 from flask import render_template, request
@@ -55,19 +55,20 @@ def cities_input():
     return render_template('input.html')
 
 
-def get_datapoint_from_sql(case, industry, geofips):
+def get_datapoints_from_sql(case, industry, geofips):
     engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
     con = engine.connect()
 
-    query = 'SELECT x, y FROM data'\
+    query = 'SELECT x, y FROM data '\
         'WHERE data.case="%s" and geofips="%s" and industry="%s"' %\
         (case, geofips, industry)
 
     df = pd.read_sql(query, con=con.connection)
+    print(df.values)
 
-    data = [(1990, 1), (2000, 2)]
+    # data = [(1990, 1), (2000, 2)]
 
-    return data
+    return df.values
 
 
 @app.route('/output')

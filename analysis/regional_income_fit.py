@@ -2,8 +2,6 @@
 
 import sys
 import signal
-import time
-import shelve
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -84,7 +82,7 @@ def relative_normalize(df, which):
     for year in year_cols:
         df[year] = df[year]/means_df[year]-1
 
-    return df
+    return df, means_df
 
 
 def merge_dfs(older_df, newer_df):
@@ -139,13 +137,10 @@ def merge_dfs(older_df, newer_df):
     return merged_df
 
 
-def windowed_svr_fit_model(X, Y, geo, ind, ntest=10, window=5):
-    ''' creates and fits an SVR model to data.
-    accepts np.arrays X and Y'''
-    start_time = datetime.datetime.now()
-
+def get_data_ranges(X, Y, which_case, window, ntest):
     def generate_windows(arr):
         numPts = len(arr)
+        window = 7
 
         i = 0
         j = window
@@ -165,187 +160,218 @@ def windowed_svr_fit_model(X, Y, geo, ind, ntest=10, window=5):
             j += 1
         return x, y
 
-    X_full = X
-    Y_full = Y
+    results = {}
+    if which_case == 'full':
+        results['X'] = X
+        results['Y'] = Y
+        results['x'], results['y'] = generate_windows(Y)
 
-    X_train = X[0:-ntest]
-    Y_train = Y[0:-ntest]
+    if which_case == 'test':
+        results['X'] = X[0:-ntest]
+        results['Y'] = Y[0:-ntest]
 
-    X_test = X[-ntest:]
-    Y_test = Y[-ntest:]
+        results['X_test'] = X[-ntest:]
+        results['Y_test'] = Y[-ntest:]
 
-    x_full, y_full = generate_windows(Y_full)
-    x_train, y_train = generate_windows(Y_train)
+        results['x'], results['y'] = generate_windows(results['Y'])
 
-    # scale the data for fitting in the model
-    trans = StandardScaler()
-    Y = trans.fit_transform(Y)
+    results['X_proj'] = range(X[-1]+1, X[-1]+1+10)
 
-    # windowed svr gridsearch
-    '''
-    c_set = []
-    for ex in range(-50, 50):
-        for fac in range(1, 10):
-            c_set.append(fac*(2**ex))
-    parameters = {'C': c_set}
-
-    svr_test = svm.LinearSVR(random_state=873487)
-    svr_full = svm.LinearSVR(random_state=873487)
-
-    # do gridsearch fit of model
-    grid_test = GridSearchCV(svr_test, param_grid=parameters, cv=5, n_jobs=1)
-    grid_full = GridSearchCV(svr_full, param_grid=parameters, cv=5, n_jobs=1)
-
-    model_train = grid_test.fit(x_train, y_train)
-    model_full = grid_full.fit(x_full, y_full)
-    '''
-    linear_train = linear_model.LinearRegression(fit_intercept=False)
-    linear_full = linear_model.LinearRegression(fit_intercept=False)
-    model_train = linear_train.fit(x_train, y_train)
-    model_full = linear_full.fit(x_full, y_full)
-
-    end_time = datetime.datetime.now()
-    delta_time = end_time - start_time
-    comp_time_sec = delta_time.total_seconds()  # seconds
-    print 'comp_time:', comp_time_sec
-
-    ret_dict = {'model_train': model_train,
-                'model_full': model_full,
-                'window': window,
-                'ntest': ntest,
-                'geo': geo,
-                'ind': ind,
-                'transform': trans,
-                'x_train': x_train,
-                'y_train': y_train,
-                'x_full': x_full,
-                'y_full': y_full,
-                'X_train': X_train,
-                'Y_train': Y_train,
-                'X_full': X_full,
-                'Y_full': Y_full,
-                'X_test': X_test,
-                'Y_test': Y_test,
-                'comp_time_sec': comp_time_sec}
-
-    return ret_dict
+    return results
 
 
-def windowed_svr_get_result(args_dict):
-    model_train = args_dict['model_train']
-    model_full = args_dict['model_full']
-    window = args_dict['window']
-    ntest = args_dict['ntest']
-    geo = args_dict['geo']
-    ind = args_dict['ind']
-    trans = args_dict['transform']
-    x_train = args_dict['x_train']
-    y_train = args_dict['y_train']
-    x_full = args_dict['x_full']
-    y_full = args_dict['y_full']
-    X_train = args_dict['X_train']
-    Y_train = args_dict['Y_train']
-    X_full = args_dict['X_full']
-    Y_full = args_dict['Y_full']
-    X_test = args_dict['X_test']
-    Y_test = args_dict['Y_test']
-    comp_time_sec = args_dict['comp_time_sec']
+def forecast_iteration(x, n_pred, model):
+    if n_pred > 1:
+        y = model.predict(x)
+        y_curr = [y]
+        next_x = np.append(x[1:], y_curr)
+        y_next_deeper = forecast_iteration(next_x, n_pred-1, model)
+        y_previous_shallower = np.append(y_curr, y_next_deeper)
+        return y_previous_shallower
+    else:
+        y = model.predict(x)
+        return [y]
 
-    output_dict = {}
 
-    def forecast_iteration(x, n_pred, model):
-        if n_pred > 1:
-            y = model.predict(x)
-            y_curr = [y]
-            next_x = np.append(x[1:], y_curr)
-            y_next_deeper = forecast_iteration(next_x, n_pred-1, model)
-            y_previous_shallower = np.append(y_curr, y_next_deeper)
-            return y_previous_shallower
-        else:
-            y = model.predict(x)
-            return [y]
+def run_metrics(y, ypred):
+    score_r2 = metric.r2_score(y, ypred)
+    score_expvar = metric.explained_variance_score(y, ypred)
+    score_meansqrerr = metric.mean_squared_error(y, ypred)
+    score_meanabserr = metric.mean_absolute_error(y, ypred)
+    metric_dict = {'r2': score_r2,
+                   'ev': score_expvar,
+                   'mse': score_meansqrerr,
+                   'mae': score_meanabserr}
+    return metric_dict
 
-    def run_metrics(y, ypred):
-        score_r2 = metric.r2_score(y, ypred)
-        score_expvar = metric.explained_variance_score(y, ypred)
-        score_meansqrerr = metric.mean_squared_error(y, ypred)
-        score_meanabserr = metric.mean_absolute_error(y, ypred)
-        metric_dict = {'r2': score_r2,
-                       'ev': score_expvar,
-                       'mse': score_meansqrerr,
-                       'mae': score_meanabserr}
-        return metric_dict
 
-    ypred_train = model_train.predict(x_train)
-    output_dict['train_metrics'] = run_metrics(y_train, ypred_train)
+def append_coords(results, append_list):
+    for append_item in append_list:
+        X = append_item[0]
+        Y = append_item[1]
+        which_case = append_item[2]
 
-    ypred_full = model_full.predict(x_full)
-    output_dict['full_metrics'] = run_metrics(y_full, ypred_full)
+        for xval, yval in zip(X, Y):
+            results['which_case'].append(which_case)
+            results['x'].append(xval)
+            results['y'].append(yval)
 
-    ypred_test = forecast_iteration(Y_train[-window:], len(Y_test), model_train)
-    output_dict['test_metrics'] = run_metrics(Y_test, ypred_test)
-    print ' metrics train: ', output_dict['train_metrics']
-    print ' metrics test: ', output_dict['test_metrics']
+    return results
 
+
+def dofit_AR_linreg(X, Y, which_case='both'):
+    '''accepts np.arrays X and Y'''
+    window = 7
+    ntest = 10
     pred_len = 10
-    yproj_train = forecast_iteration(Y_train[-window:],
-                                     pred_len+window, model_train)[window:]
-    Xproj_train = [yr for yr in range(
-        X_test[-1] + 1, X_test[-1] + 1 + pred_len)]
-    yproj_full = forecast_iteration(Y_full[-window:], pred_len, model_full)
-    Xproj_full = [yr for yr in range(
-        X_full[-1] + 1, X_full[-1] + 1 + pred_len)]
 
-    y_train = trans.inverse_transform(y_train)
-    y_full = trans.inverse_transform(y_full)
-    ypred_train = trans.inverse_transform(ypred_train)
-    ypred_full = trans.inverse_transform(ypred_full)
-    ypred_test = trans.inverse_transform(ypred_test)
-    yproj_train = trans.inverse_transform(yproj_train)
-    yproj_full = trans.inverse_transform(yproj_full)
-    Y_full = trans.inverse_transform(Y_full)
-    Y_train = trans.inverse_transform(Y_train)
-    Y_test = trans.inverse_transform(Y_test)
+    if which_case == 'both':
+        start_time = datetime.datetime.now()
 
-    output_dict['scaled_train_metrics'] = run_metrics(y_train, ypred_train)
-    output_dict['scaled_full_metrics'] = run_metrics(y_full, ypred_full)
-    output_dict['scaled_test_metrics'] = run_metrics(Y_test, ypred_test)
-    print ' scaled metrics train: ', output_dict['scaled_train_metrics']
-    print ' scaled metrics test: ', output_dict['scaled_test_metrics']
+        full_data = dofit_AR_linreg(X, Y, 'full')
+        test_data = dofit_AR_linreg(X, Y, 'test')
 
-    output_dict['ypred_train'] = ypred_train
-    output_dict['ypred_full'] = ypred_train
-    output_dict['ypred_test'] = ypred_test
-    output_dict['Xproj_train'] = Xproj_train
-    output_dict['Xproj_full'] = Xproj_full
-    output_dict['yproj_train'] = yproj_train
-    output_dict['yproj_full'] = yproj_full
-    output_dict['X_train'] = X_train
-    output_dict['Y_train'] = Y_train
-    output_dict['X_full'] = X_full
-    output_dict['Y_full'] = Y_full
-    output_dict['X_test'] = X_test
-    output_dict['Y_test'] = Y_test
-    output_dict['geofips'] = geo
-    output_dict['industry'] = ind
-    output_dict['window'] = window
-    output_dict['ntest'] = ntest
+        results = {}
+        results['which_case'] = []
+        results['x'] = []
+        results['y'] = []
 
-    # plt.plot_date(X_full, Y_full, '-o', color='green')
-    # plt.plot_date(X_full[window:], ypred_full, '--', color='red')
-    plt.plot_date(X_train, Y_train, '-o', color='green')
-    plt.plot_date(X_train[window:], ypred_train, '--', color='red')
-    plt.plot_date(X_test, Y_test, '-o', color='green')
-    plt.plot_date(X_test, ypred_test, '--', color='red')
-    plt.plot_date(Xproj_train, yproj_train, '--', color='blue')
-    plt.plot_date(Xproj_full, yproj_full, '--', color='blue')
-    plt.xlim(1967, 2016+pred_len)
-    plt.xticks(np.arange(1970, 2015+pred_len, 5),
-               np.arange(1970, 2015+pred_len, 5).astype(str))
-    plt.show()
+        results = append_coords(
+            results,
+            [(full_data['X'], full_data['Y'], 'full_data'),
+             (full_data['X'][window:], full_data['ypred'], 'full_pred'),
+             (full_data['X_proj'], full_data['yproj'], 'full_proj'),
+             (test_data['X'], test_data['Y'], 'train_data'),
+             (test_data['X'][window:], test_data['ypred'], 'train_pred'),
+             (test_data['X_test'], test_data['Y_test'], 'test_data'),
+             (test_data['X_test'], test_data['ypred_test'], 'test_pred'),
+             (test_data['X_proj'], test_data['yproj'], 'train_proj')])
 
-    output_dict['comp_time_sec'] = comp_time_sec
-    return output_dict
+        result_df = pd.DataFrame(results)
+        print result_df
+
+        end_time = datetime.datetime.now()
+        delta_time = end_time - start_time
+        comp_time_sec = delta_time.total_seconds()  # seconds
+        print 'comp_time:', comp_time_sec
+
+        plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
+        plt.plot_date(
+            test_data['X'][window:], test_data['ypred'], '--', color='red')
+
+        plt.plot_date(
+            test_data['X_test'], test_data['Y_test'], '-o', color='green')
+        plt.plot_date(
+            test_data['X_test'], test_data['ypred_test'], '--', color='red')
+
+        plt.plot_date(
+            full_data['X'][window:], full_data['ypred'], '--', color='blue')
+
+        plt.plot_date(
+            test_data['X_proj'], test_data['yproj'], '--', color='red')
+        plt.plot_date(
+            full_data['X_proj'], full_data['yproj'], '--', color='blue')
+        plt.xlim(1967, 2016+pred_len)
+        plt.xticks(np.arange(1970, 2015+pred_len, 5),
+                   np.arange(1970, 2015+pred_len, 5).astype(str))
+        plt.show()
+
+        return result_df
+    else:
+        # scale the data for fitting in the model
+        trans = StandardScaler()
+        Y = trans.fit_transform(Y)
+
+        # generate time-windowed data points as well as split test region
+        # 'data' is a dictionary of various x and y arrays
+        data = get_data_ranges(X, Y, which_case, window, ntest)
+
+        linear = linear_model.LinearRegression(fit_intercept=False)
+        model = linear.fit(data['x'], data['y'])
+
+        # get prediction for data time period
+        data['ypred'] = model.predict(data['x'])
+
+        if which_case == 'test':
+            data['ypred_test'] = forecast_iteration(
+                data['Y'][-window:], ntest, model)
+
+        # get prediction for forecast time period
+        if which_case == 'test':
+            length = ntest + pred_len
+        else:
+            length = pred_len
+        data['yproj'] = forecast_iteration(
+            data['Y'][-window:], length, model)[-pred_len:]
+
+        # inverse the scaling transformations
+        data['y'] = trans.inverse_transform(data['y'])
+        data['ypred'] = trans.inverse_transform(data['ypred'])
+        data['yproj'] = trans.inverse_transform(data['yproj'])
+        data['Y'] = trans.inverse_transform(data['Y'])
+
+        # get fit scores
+        data['metrics'] = run_metrics(data['y'], data['ypred'])
+
+        if which_case == 'test':
+            data['ypred_test'] = trans.inverse_transform(data['ypred_test'])
+            data['Y_test'] = trans.inverse_transform(data['Y_test'])
+            data['metrics_test'] = run_metrics(data['Y_test'],
+                                               data['ypred_test'])
+
+        return data
+
+
+def do_one_fit(X, Y):
+    try:
+        # signal handler for a timeout clock
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(425)
+
+        df = dofit_AR_linreg(X, Y)
+
+        df['method'] = ['AR_linreg' for i in range(0, len(df))]
+
+        signal.alarm(0)
+    except MyTimeoutException, exc:
+        df = None
+        print exc
+        print '----------FIT FAILED!!!----------\n'
+
+    return df
+
+
+def do_all_fits(input_df, file_method):
+    out_df = None
+    for geofips, count in zip(input_df.index, range(0, len(input_df))):
+        attributes = {'geofips': geofips,
+                      'industry': 'test',
+                      'wind': 7,
+                      'ntst': 10}
+        geo = attributes['geofips']
+
+        # consider one case to start modeling:
+        # randomly_chosen_geo = '27100'
+        print '%dCity %s: %s\n' % \
+            (count, geo, input_df.loc[geo].loc['OldGeoName'])
+
+        years = np.array([str(yr) for yr in range(1969, 2014)])
+        values = input_df.loc[geo].loc[years].values
+        years = years.astype(int)
+
+        tmp_df = do_one_fit(years, values)
+
+        tmp_df['geofips'] = \
+            [attributes['geofips'] for i in range(0, len(tmp_df))]
+        tmp_df['industry'] = \
+            [attributes['industry'] for i in range(0, len(tmp_df))]
+
+        if out_df is None:
+            out_df = tmp_df
+        else:
+            out_df = pd.concat([out_df, tmp_df], ignore_index=True)
+
+    return out_df
 
 
 def main(argv):
@@ -362,77 +388,15 @@ def main(argv):
     newer_df, new_dropped_df = clean_nans(newer_df, 'newer')
 
     # normalize values to a relative quantaty
-    older_df = relative_normalize(older_df, 'older')
-    newer_df = relative_normalize(newer_df, 'newer')
+    older_df, older_mean_df = relative_normalize(older_df, 'older')
+    newer_df, newer_mean_df = relative_normalize(newer_df, 'newer')
 
     df = merge_dfs(older_df, newer_df)
 
-    for geofips, count in zip(df.index, range(0, len(df))):
-        geo = geofips
-        ind = 'test'
-        wind = 7
-        ntst = 10
+    print 'before fits'
+    result_df = do_all_fits(df, file_method)
 
-        # consider one case to start modeling:
-        # randomly_chosen_geo = '27100'
-        print '%dCity %s: %s\n' % \
-            (count, geo, df.loc[geo].loc['OldGeoName'])
-
-        years = np.array([str(yr) for yr in range(1969, 2014)])
-        values = df.loc[geo].loc[years].values
-        years = years.astype(int)
-
-        '''
-        pool = mp.Pool(processes=mp.cpu_count()-1)
-        results = [pool.apply_async(read_file_do_sentiment,
-            args=(infile,)) for infile in onlyfiles]
-        output = [p.get() for p in results]'''
-
-        model_filename = 'results/regional_income/'\
-            'fitted_model_g%s_i%s_w%d_t%d.shelf' % (geo, ind, wind, ntst)
-        results_filename = 'results/regional_income/'\
-            'results_g%s_i%s_w%d_t%d.shelf' % (geo, ind, wind, ntst)
-
-        key = 'args_dict'
-
-        try:
-
-            if file_method != 'load':
-                # signal handler for a timeout clock
-                signal.signal(signal.SIGALRM, handler)
-                signal.alarm(425)
-
-                write_args_dict = windowed_svr_fit_model(years,
-                                                         values,
-                                                         geo,
-                                                         ind,
-                                                         ntest=ntst,
-                                                         window=wind)
-
-                print '%dSaving model: %s' % (count, model_filename)
-                writeshelf = shelve.open(model_filename, 'n')
-                writeshelf[key] = write_args_dict
-                writeshelf.close()
-
-                signal.alarm(0)
-
-                time.sleep(2)
-
-            if file_method != 'save':
-                readshelf = shelve.open(model_filename, 'r')
-                read_args_dict = readshelf[key]
-                readshelf.close()
-
-                results_dict = windowed_svr_get_result(read_args_dict)
-
-                print '%dSaving results: %s' % (count, results_filename)
-                writeshelf = shelve.open(results_filename, 'n')
-                writeshelf[key] = results_dict
-                writeshelf.close()
-
-        except MyTimeoutException, exc:
-            print exc
-            print '%d---------GEOFIPS %s FAILED!!!----------\n' % (count, geo)
+    print len(result_df), result_df.head()
 
     print 'done!'
     return 0

@@ -1,4 +1,3 @@
-import MySQLdb as mdb
 import pandas as pd
 # import numpy as np
 import pygal
@@ -18,8 +17,8 @@ def index():
 
 @app.route('/db')
 def cities_page():
-    db = mdb.connect(user='danielj', host='localhost',
-                     db='world',  charset='utf8')
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    db = engine.connect()
 
     with db:
         cur = db.cursor()
@@ -34,8 +33,8 @@ def cities_page():
 
 @app.route('/db_fancy')
 def cities_page_fancy():
-    db = mdb.connect(user='danielj', host='localhost',
-                     db='world',  charset='utf8')
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    db = engine.connect()
 
     with db:
         cur = db.cursor()
@@ -75,12 +74,21 @@ def cities_output():
     result_list = [{'name': 'City 1', 'recent': 100, 'forecast': 110},
                    {'name': 'City 2', 'recent': 100, 'forecast': 90}]
 
-    data_input = get_datapoints_from_sql('full_data', 'manf', '25180')
+    industry = 'manf'
+    geo_list = ['31080', '16980']
+
+    data = {}
+    proj = {}
+    for geo in geo_list:
+        data[geo] = get_datapoints_from_sql('full_data', industry, geo)
+        proj[geo] = get_datapoints_from_sql('full_proj', industry, geo)
 
     chart = pygal.XY(disable_xml_declaration=True, width=800, height=350)
     chart.title = 'Browser usage evolution'
     chart.x_labels = map(int, range(1965, 2025, 5))
-    chart.add('Data', data_input)
+    for geo in geo_list:
+        chart.add('Data', data[geo])
+        chart.add('Projection', proj[geo])
 
     return render_template('output.html', industry=industry,
                            result_list=result_list, chart=chart)

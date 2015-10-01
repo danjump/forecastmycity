@@ -2,12 +2,11 @@ import pandas as pd
 # import numpy as np
 import pygal
 from flask import render_template, request
-from app import app
+from app import fmc_app
 from sqlalchemy import create_engine
 
 
-@app.route('/')
-@app.route('/index')
+@fmc_app.route('/index')
 def index():
     user = {'nickname': 'Miguel'}  # fake user
     return render_template('index.html',
@@ -15,9 +14,9 @@ def index():
                            user=user)
 
 
-@app.route('/db')
+@fmc_app.route('/db')
 def cities_page():
-    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
     db = engine.connect()
 
     with db:
@@ -31,9 +30,9 @@ def cities_page():
     return cities
 
 
-@app.route('/db_fancy')
+@fmc_app.route('/db_fancy')
 def cities_page_fancy():
-    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
     db = engine.connect()
 
     with db:
@@ -49,13 +48,14 @@ def cities_page_fancy():
     return render_template('cities.html', cities=cities)
 
 
-@app.route('/input')
+@fmc_app.route('/')
+@fmc_app.route('/input')
 def cities_input():
     return render_template('input.html')
 
 
 def get_datapoints_from_sql(case, industry, geofips):
-    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
     con = engine.connect()
 
     query = 'SELECT x, y FROM fit_data WHERE '\
@@ -67,7 +67,7 @@ def get_datapoints_from_sql(case, industry, geofips):
     return df.values
 
 
-@app.route('/output')
+@fmc_app.route('/output')
 def cities_output():
     industry = request.args.get('Industry')
 

@@ -11,7 +11,9 @@ import re
 import sklearn.linear_model as linear_model
 import sklearn.metrics as metric
 from sklearn.preprocessing import StandardScaler
-import datetime
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+# import datetime
 # import multiprocessing as mp
 
 
@@ -24,18 +26,24 @@ def handler(signum, frame):
     raise MyTimeoutException("fit timeout")
 
 
-def load_data(which):
+def load_data(which, industry):
     if which == 'newer':
         infile = '../data/BEA-RegionalIncomeByIndustry/CA5N_2001_2013_MSA.csv'
-        # industry_code = 500  # manf
-        industry_code = 700  # rettrd
-        # industry_code = 2000  # gov
+        if industry == 'manf':
+            industry_code = 500  # manf
+        elif industry == 'rettrd':
+            industry_code = 700  # rettrd
+        elif industry == 'gov':
+            industry_code = 2000  # gov
         year_cols = [str(yr) for yr in range(2001, 2014)]
     elif which == 'older':
         infile = '../data/BEA-RegionalIncomeByIndustry/CA5_1969_2000_MSA.csv'
-        # industry_code = 400  # manf
-        industry_code = 620  # rettrd
-        # industry_code = 900  # gov
+        if industry == 'manf':
+            industry_code = 400  # manf
+        elif industry == 'rettrd':
+            industry_code = 620  # rettrd
+        elif industry == 'gov':
+            industry_code = 900  # gov
         year_cols = [str(yr) for yr in range(1969, 2001)]
 
     df = pd.read_csv(infile, low_memory=False)
@@ -226,7 +234,7 @@ def dofit_AR_linreg(X, Y, which_case='both'):
     pred_len = 10
 
     if which_case == 'both':
-        start_time = datetime.datetime.now()
+        # start_time = datetime.datetime.now()
 
         full_data = dofit_AR_linreg(X, Y, 'full')
         test_data = dofit_AR_linreg(X, Y, 'test')
@@ -248,12 +256,13 @@ def dofit_AR_linreg(X, Y, which_case='both'):
              (test_data['X_proj'], test_data['yproj'], 'train_proj')])
 
         result_df = pd.DataFrame(results)
-        print result_df
 
+        '''
         end_time = datetime.datetime.now()
         delta_time = end_time - start_time
         comp_time_sec = delta_time.total_seconds()  # seconds
         print 'comp_time:', comp_time_sec
+        '''
 
         plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
         plt.plot_date(
@@ -274,7 +283,7 @@ def dofit_AR_linreg(X, Y, which_case='both'):
         plt.xlim(1967, 2016+pred_len)
         plt.xticks(np.arange(1970, 2015+pred_len, 5),
                    np.arange(1970, 2015+pred_len, 5).astype(str))
-        plt.show()
+        # plt.show()
 
         return result_df
     else:
@@ -341,19 +350,13 @@ def do_one_fit(X, Y):
     return df
 
 
-def do_all_fits(input_df, file_method):
+def do_all_fits(input_df, attributes):
     out_df = None
-    for geofips, count in zip(input_df.index, range(0, len(input_df))):
-        attributes = {'geofips': geofips,
-                      'industry': 'test',
-                      'wind': 7,
-                      'ntst': 10}
-        geo = attributes['geofips']
-
-        # consider one case to start modeling:
-        # randomly_chosen_geo = '27100'
-        print '%dCity %s: %s\n' % \
-            (count, geo, input_df.loc[geo].loc['OldGeoName'])
+    length = len(input_df)
+    for geofips, count in zip(input_df.index, range(1, length+1)):
+        sys.stdout.write('\rProgress: %d/%d' % (count, length))
+        sys.stdout.flush()
+        geo = geofips
 
         years = np.array([str(yr) for yr in range(1969, 2014)])
         values = input_df.loc[geo].loc[years].values
@@ -362,7 +365,7 @@ def do_all_fits(input_df, file_method):
         tmp_df = do_one_fit(years, values)
 
         tmp_df['geofips'] = \
-            [attributes['geofips'] for i in range(0, len(tmp_df))]
+            [geofips for i in range(0, len(tmp_df))]
         tmp_df['industry'] = \
             [attributes['industry'] for i in range(0, len(tmp_df))]
 
@@ -371,32 +374,65 @@ def do_all_fits(input_df, file_method):
         else:
             out_df = pd.concat([out_df, tmp_df], ignore_index=True)
 
+    print ''
     return out_df
 
 
-def main(argv):
+def write_to_sql(df, name):
     try:
-        file_method = argv[0]
+        # print 'Connecting to database...'
+        # con = mdb.connect('localhost', 'danielj', '', 'ecotest')
+        engine = create_engine(
+            "mysql+mysqldb://danielj:@localhost/ecotest")
     except:
-        file_method = None
+        print 'Error connecting to db:', sys.exc_info()[0]
+        return 0
+    try:
+        # print 'Writing to database table:%s'%name
+        df.to_sql(con=engine, name=name,
+                  if_exists='append', flavor='mysql')
+    except OperationalError as err:
+        print 'Error writing to db:', sys.exc_info()[0]
+        print err.message
+        return 0
+    return 1
 
-    # get and clean data
-    older_df = load_data('older')
-    newer_df = load_data('newer')
 
-    older_df, old_dropped_df = clean_nans(older_df, 'older')
-    newer_df, new_dropped_df = clean_nans(newer_df, 'newer')
+def main(argv):
+    industries = ['manf', 'rettrd', 'gov']
+    all_data_df = None
 
-    # normalize values to a relative quantaty
-    older_df, older_mean_df = relative_normalize(older_df, 'older')
-    newer_df, newer_mean_df = relative_normalize(newer_df, 'newer')
+    for industry in industries:
+        print 'Starting %s fits:' % industry
 
-    df = merge_dfs(older_df, newer_df)
+        attributes = {'industry': industry,
+                      'wind': 7,
+                      'ntst': 10}
 
-    print 'before fits'
-    result_df = do_all_fits(df, file_method)
+        # get and clean data
+        older_df = load_data('older', attributes['industry'])
+        newer_df = load_data('newer', attributes['industry'])
 
-    print len(result_df), result_df.head()
+        older_df, old_dropped_df = clean_nans(older_df, 'older')
+        newer_df, new_dropped_df = clean_nans(newer_df, 'newer')
+
+        # normalize values to a relative quantaty
+        older_df, older_mean_df = relative_normalize(older_df, 'older')
+        newer_df, newer_mean_df = relative_normalize(newer_df, 'newer')
+
+        df = merge_dfs(older_df, newer_df)
+
+        result_df = do_all_fits(df, attributes)
+        print len(result_df)
+
+        if all_data_df is None:
+            all_data_df = result_df
+        else:
+            all_data_df = pd.concat([all_data_df, result_df],
+                                    ignore_index=True)
+
+    print len(all_data_df), all_data_df.head()
+    write_to_sql(all_data_df, 'fit_data')
 
     print 'done!'
     return 0

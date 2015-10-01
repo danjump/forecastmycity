@@ -59,14 +59,11 @@ def get_datapoints_from_sql(case, industry, geofips):
     engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
     con = engine.connect()
 
-    query = 'SELECT x, y FROM data '\
-        'WHERE data.case="%s" and geofips="%s" and industry="%s"' %\
-        (case, geofips, industry)
+    query = 'SELECT x, y FROM fit_data WHERE '\
+        'which_case="%s" and geofips="%s" and industry="%s" and method="%s"' %\
+        (case, geofips, industry, 'AR_linreg')
 
     df = pd.read_sql(query, con=con.connection)
-    print(df.values)
-
-    # data = [(1990, 1), (2000, 2)]
 
     return df.values
 
@@ -78,7 +75,7 @@ def cities_output():
     result_list = [{'name': 'City 1', 'recent': 100, 'forecast': 110},
                    {'name': 'City 2', 'recent': 100, 'forecast': 90}]
 
-    data_input = get_datapoints_from_sql('data_full', 'manf', '25180')
+    data_input = get_datapoints_from_sql('full_data', 'manf', '25180')
 
     chart = pygal.XY(disable_xml_declaration=True, width=800, height=350)
     chart.title = 'Browser usage evolution'

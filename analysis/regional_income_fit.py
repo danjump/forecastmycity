@@ -227,6 +227,110 @@ def append_coords(results, append_list):
     return results
 
 
+def dofit_linreg(X, Y, which_case='both'):
+    '''accepts np.arrays X and Y'''
+    window = 7
+    ntest = 10
+    pred_len = 10
+
+    if which_case == 'both':
+        # start_time = datetime.datetime.now()
+
+        full_data = dofit_linreg(X, Y, 'full')
+        test_data = dofit_linreg(X, Y, 'test')
+
+        results = {}
+        results['which_case'] = []
+        results['x'] = []
+        results['y'] = []
+
+        results = append_coords(
+            results,
+            [(full_data['X'], full_data['Y'], 'full_data'),
+             (full_data['X'][window:], full_data['ypred'], 'full_pred'),
+             (full_data['X_proj'], full_data['yproj'], 'full_proj'),
+             (test_data['X'], test_data['Y'], 'train_data'),
+             (test_data['X'][window:], test_data['ypred'], 'train_pred'),
+             (test_data['X_test'], test_data['Y_test'], 'test_data'),
+             (test_data['X_test'], test_data['ypred_test'], 'test_pred'),
+             (test_data['X_proj'], test_data['yproj'], 'train_proj')])
+
+        result_df = pd.DataFrame(results)
+
+        '''
+        end_time = datetime.datetime.now()
+        delta_time = end_time - start_time
+        comp_time_sec = delta_time.total_seconds()  # seconds
+        print 'comp_time:', comp_time_sec
+        '''
+
+        plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
+        plt.plot_date(
+            test_data['X'][window:], test_data['ypred'], '--', color='red')
+
+        plt.plot_date(
+            test_data['X_test'], test_data['Y_test'], '-o', color='green')
+        plt.plot_date(
+            test_data['X_test'], test_data['ypred_test'], '--', color='red')
+
+        plt.plot_date(
+            full_data['X'][window:], full_data['ypred'], '--', color='blue')
+
+        plt.plot_date(
+            test_data['X_proj'], test_data['yproj'], '--', color='red')
+        plt.plot_date(
+            full_data['X_proj'], full_data['yproj'], '--', color='blue')
+        plt.xlim(1967, 2016+pred_len)
+        plt.xticks(np.arange(1970, 2015+pred_len, 5),
+                   np.arange(1970, 2015+pred_len, 5).astype(str))
+        # plt.show()
+
+        return result_df
+    else:
+        # scale the data for fitting in the model
+        trans = StandardScaler()
+        Y = trans.fit_transform(Y)
+
+        # generate time-windowed data points as well as split test region
+        # 'data' is a dictionary of various x and y arrays
+        data = get_data_ranges(X, Y, which_case, window, ntest)
+
+        linear = linear_model.LinearRegression(fit_intercept=False)
+        model = linear.fit(data['x'], data['y'])
+
+        # get prediction for data time period
+        data['ypred'] = model.predict(data['x'])
+
+        if which_case == 'test':
+            data['ypred_test'] = forecast_iteration(
+                data['Y'][-window:], ntest, model)
+
+        # get prediction for forecast time period
+        if which_case == 'test':
+            length = ntest + pred_len
+        else:
+            length = pred_len
+        data['yproj'] = forecast_iteration(
+            data['Y'][-window:], length, model)[-pred_len:]
+
+        # inverse the scaling transformations
+        data['y'] = trans.inverse_transform(data['y'])
+        data['ypred'] = trans.inverse_transform(data['ypred'])
+        data['yproj'] = trans.inverse_transform(data['yproj'])
+        data['Y'] = trans.inverse_transform(data['Y'])
+
+        # get fit scores
+        data['metrics'] = run_metrics(data['y'], data['ypred'])
+
+        if which_case == 'test':
+            data['ypred_test'] = trans.inverse_transform(data['ypred_test'])
+            data['Y_test'] = trans.inverse_transform(data['Y_test'])
+            data['metrics_test'] = run_metrics(data['Y_test'],
+                                               data['ypred_test'])
+
+        return data
+
+
 def dofit_AR_linreg(X, Y, which_case='both'):
     '''accepts np.arrays X and Y'''
     window = 7
@@ -337,9 +441,15 @@ def do_one_fit(X, Y):
         signal.signal(signal.SIGALRM, handler)
         signal.alarm(425)
 
-        df = dofit_AR_linreg(X, Y)
+        AR_df = dofit_AR_linreg(X, Y)
 
-        df['method'] = ['AR_linreg' for i in range(0, len(df))]
+        AR_df['method'] = ['AR_linreg' for i in range(0, len(AR_df))]
+
+        lr_df = dofit_linreg(X, Y)
+
+        lr_df['method'] = ['linreg' for i in range(0, len(lr_df))]
+
+        df = pd.concat([AR_df, lr_df], axis=0, ignore_index=True)
 
         signal.alarm(0)
     except MyTimeoutException, exc:
@@ -381,9 +491,8 @@ def do_all_fits(input_df, attributes):
 def write_to_sql(df, name):
     try:
         # print 'Connecting to database...'
-        # con = mdb.connect('localhost', 'danielj', '', 'ecotest')
         engine = create_engine(
-            "mysql+mysqldb://danielj:@localhost/ecotest")
+            "mysql+mysqldb://danielj:@localhost/forecastmycity")
     except:
         print 'Error connecting to db:', sys.exc_info()[0]
         return 0

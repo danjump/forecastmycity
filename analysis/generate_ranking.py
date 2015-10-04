@@ -9,7 +9,7 @@ from sklearn.linear_model import LinearRegression
 
 
 def get_geo_list(industry):
-    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/forecastmycity")
     con = engine.connect()
 
     query = 'SELECT DISTINCT(geofips) FROM fit_data WHERE '\
@@ -21,7 +21,7 @@ def get_geo_list(industry):
 
 
 def get_one_dataset(geofips, industry, method, which_case):
-    engine = create_engine("mysql+mysqldb://danielj:@localhost/ecotest")
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/forecastmycity")
     con = engine.connect()
 
     query = 'SELECT x, y FROM fit_data WHERE '\
@@ -89,7 +89,7 @@ def write_rankings_to_sql(geofips, industry,
     df = pd.DataFrame(fill_dict)
     try:
         engine = create_engine(
-            "mysql+mysqldb://danielj:@localhost/ecotest")
+            "mysql+mysqldb://danielj:@localhost/forecastmycity")
     except:
         print 'Error connecting to db:', sys.exc_info()[0]
         return 0

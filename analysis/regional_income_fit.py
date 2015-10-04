@@ -389,7 +389,7 @@ def write_to_sql(df, name):
         return 0
     try:
         # print 'Writing to database table:%s'%name
-        df.to_sql(con=engine, name=name,
+        df.to_sql(con=engine, name=name, index=False,
                   if_exists='append', flavor='mysql')
     except OperationalError as err:
         print 'Error writing to db:', sys.exc_info()[0]

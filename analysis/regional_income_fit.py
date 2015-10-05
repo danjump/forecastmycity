@@ -229,7 +229,6 @@ def append_coords(results, append_list):
 
 def dofit_linreg(X, Y, which_case='both'):
     '''accepts np.arrays X and Y'''
-    window = 7
     ntest = 10
     pred_len = 10
 
@@ -246,16 +245,35 @@ def dofit_linreg(X, Y, which_case='both'):
 
         results = append_coords(
             results,
-            [(full_data['X'], full_data['Y'], 'full_data'),
-             (full_data['X'][window:], full_data['ypred'], 'full_pred'),
-             (full_data['X_proj'], full_data['yproj'], 'full_proj'),
-             (test_data['X'], test_data['Y'], 'train_data'),
-             (test_data['X'][window:], test_data['ypred'], 'train_pred'),
-             (test_data['X_test'], test_data['Y_test'], 'test_data'),
-             (test_data['X_test'], test_data['ypred_test'], 'test_pred'),
-             (test_data['X_proj'], test_data['yproj'], 'train_proj')])
+            [(full_data['x'], full_data['y'], 'full_data'),
+             (full_data['x'], full_data['ypred'], 'full_pred'),
+             (full_data['xproj'], full_data['yproj'], 'full_proj'),
+             (test_data['x'], test_data['x'], 'train_data'),
+             (test_data['x'], test_data['ypred'], 'train_pred'),
+             (test_data['xtest'], test_data['ytest'], 'test_data'),
+             (test_data['xtest'], test_data['ypred_test'], 'test_pred'),
+             (test_data['xproj'], test_data['yproj'], 'train_proj')])
 
         result_df = pd.DataFrame(results)
+
+        metrics = {}
+        metrics['which_range'] = []
+        metrics['mse'] = []
+        metrics['ev'] = []
+        metrics['mae'] = []
+        metrics['r2'] = []
+
+        metrics['which_range'].append('full')
+        for key in full_data['metrics']:
+            metrics[key].append(full_data['metrics'][key])
+        metrics['which_range'].append('train')
+        for key in test_data['metrics']:
+            metrics[key].append(test_data['metrics'][key])
+        metrics['which_range'].append('test')
+        for key in test_data['metrics']:
+            metrics[key].append(test_data['metrics_test'][key])
+
+        metric_df = pd.DataFrame(metrics)
 
         '''
         end_time = datetime.datetime.now()
@@ -264,68 +282,62 @@ def dofit_linreg(X, Y, which_case='both'):
         print 'comp_time:', comp_time_sec
         '''
 
-        plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
+        plt.plot_date(test_data['x'], test_data['y'], '-o', color='green')
+        '''
         plt.plot_date(
-            test_data['X'][window:], test_data['ypred'], '--', color='red')
+            test_data['x'], test_data['ypred'], '--', color='red')
 
         plt.plot_date(
-            test_data['X_test'], test_data['Y_test'], '-o', color='green')
+            test_data['xtest'], test_data['ytest'], '-o', color='green')
         plt.plot_date(
-            test_data['X_test'], test_data['ypred_test'], '--', color='red')
+            test_data['xtest'], test_data['ypred_test'], '--', color='red')
 
         plt.plot_date(
-            full_data['X'][window:], full_data['ypred'], '--', color='blue')
+            full_data['x'], full_data['ypred'], '--', color='blue')
 
         plt.plot_date(
-            test_data['X_proj'], test_data['yproj'], '--', color='red')
+            test_data['xproj'], test_data['yproj'], '--', color='red')
         plt.plot_date(
-            full_data['X_proj'], full_data['yproj'], '--', color='blue')
+            full_data['xproj'], full_data['yproj'], '--', color='blue')
         plt.xlim(1967, 2016+pred_len)
         plt.xticks(np.arange(1970, 2015+pred_len, 5),
                    np.arange(1970, 2015+pred_len, 5).astype(str))
-        # plt.show()
+        plt.show()
+        '''
 
-        return result_df
+        return result_df, metric_df
     else:
-        # scale the data for fitting in the model
-        trans = StandardScaler()
-        Y = trans.fit_transform(Y)
-
         # generate time-windowed data points as well as split test region
         # 'data' is a dictionary of various x and y arrays
-        data = get_data_ranges(X, Y, which_case, window, ntest)
+        data = {}
+        if which_case == 'test':
+            data['x'] = X[:-ntest]
+            data['y'] = Y[:-ntest]
+            data['xtest'] = X[-ntest:]
+            data['ytest'] = Y[-ntest:]
+        else:
+            data['x'] = X[:]
+            data['y'] = Y[:]
 
-        linear = linear_model.LinearRegression(fit_intercept=False)
-        model = linear.fit(data['x'], data['y'])
+        linear = linear_model.LinearRegression(fit_intercept=True)
+        model = linear.fit(data['x'].reshape(len(data['x']), 1), data['y'])
 
         # get prediction for data time period
-        data['ypred'] = model.predict(data['x'])
+        data['ypred'] = model.predict(data['x'].reshape(len(data['x']), 1))
 
         if which_case == 'test':
-            data['ypred_test'] = forecast_iteration(
-                data['Y'][-window:], ntest, model)
+            data['ypred_test'] = model.predict(
+                data['xtest'].reshape(len(data['xtest']), 1))
 
         # get prediction for forecast time period
-        if which_case == 'test':
-            length = ntest + pred_len
-        else:
-            length = pred_len
-        data['yproj'] = forecast_iteration(
-            data['Y'][-window:], length, model)[-pred_len:]
-
-        # inverse the scaling transformations
-        data['y'] = trans.inverse_transform(data['y'])
-        data['ypred'] = trans.inverse_transform(data['ypred'])
-        data['yproj'] = trans.inverse_transform(data['yproj'])
-        data['Y'] = trans.inverse_transform(data['Y'])
+        data['xproj'] = np.array(range(X[-1]+1, X[-1]+1+pred_len))
+        data['yproj'] = model.predict(data['xproj'].reshape(pred_len, 1))
 
         # get fit scores
         data['metrics'] = run_metrics(data['y'], data['ypred'])
 
         if which_case == 'test':
-            data['ypred_test'] = trans.inverse_transform(data['ypred_test'])
-            data['Y_test'] = trans.inverse_transform(data['Y_test'])
-            data['metrics_test'] = run_metrics(data['Y_test'],
+            data['metrics_test'] = run_metrics(data['ytest'],
                                                data['ypred_test'])
 
         return data
@@ -361,6 +373,25 @@ def dofit_AR_linreg(X, Y, which_case='both'):
 
         result_df = pd.DataFrame(results)
 
+        metrics = {}
+        metrics['which_range'] = []
+        metrics['mse'] = []
+        metrics['ev'] = []
+        metrics['mae'] = []
+        metrics['r2'] = []
+
+        metrics['which_range'].append('full')
+        for key in full_data['metrics']:
+            metrics[key].append(full_data['metrics'][key])
+        metrics['which_range'].append('train')
+        for key in test_data['metrics']:
+            metrics[key].append(test_data['metrics'][key])
+        metrics['which_range'].append('test')
+        for key in test_data['metrics']:
+            metrics[key].append(test_data['metrics_test'][key])
+
+        metric_df = pd.DataFrame(metrics)
+
         '''
         end_time = datetime.datetime.now()
         delta_time = end_time - start_time
@@ -368,6 +399,7 @@ def dofit_AR_linreg(X, Y, which_case='both'):
         print 'comp_time:', comp_time_sec
         '''
 
+        '''
         plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
         plt.plot_date(
             test_data['X'][window:], test_data['ypred'], '--', color='red')
@@ -387,9 +419,10 @@ def dofit_AR_linreg(X, Y, which_case='both'):
         plt.xlim(1967, 2016+pred_len)
         plt.xticks(np.arange(1970, 2015+pred_len, 5),
                    np.arange(1970, 2015+pred_len, 5).astype(str))
-        # plt.show()
+        plt.show()
+        '''
 
-        return result_df
+        return result_df, metric_df
     else:
         # scale the data for fitting in the model
         trans = StandardScaler()
@@ -441,15 +474,18 @@ def do_one_fit(X, Y):
         signal.signal(signal.SIGALRM, handler)
         signal.alarm(425)
 
-        AR_df = dofit_AR_linreg(X, Y)
+        AR_df, AR_met_df = dofit_AR_linreg(X, Y)
 
         AR_df['method'] = ['AR_linreg' for i in range(0, len(AR_df))]
+        AR_met_df['method'] = ['AR_linreg' for i in range(0, len(AR_met_df))]
 
-        lr_df = dofit_linreg(X, Y)
+        lr_df, lr_met_df = dofit_linreg(X, Y)
 
         lr_df['method'] = ['linreg' for i in range(0, len(lr_df))]
+        lr_met_df['method'] = ['linreg' for i in range(0, len(lr_met_df))]
 
-        df = pd.concat([AR_df, lr_df], axis=0, ignore_index=True)
+        df = pd.concat([AR_df, lr_df], ignore_index=True)
+        met_df = pd.concat([AR_met_df, lr_met_df], ignore_index=True)
 
         signal.alarm(0)
     except MyTimeoutException, exc:
@@ -457,11 +493,12 @@ def do_one_fit(X, Y):
         print exc
         print '----------FIT FAILED!!!----------\n'
 
-    return df
+    return df, met_df
 
 
 def do_all_fits(input_df, attributes):
-    out_df = None
+    data_df = None
+    metric_df = None
     length = len(input_df)
     for geofips, count in zip(input_df.index, range(1, length+1)):
         sys.stdout.write('\rProgress: %d/%d' % (count, length))
@@ -472,33 +509,40 @@ def do_all_fits(input_df, attributes):
         values = input_df.loc[geo].loc[years].values
         years = years.astype(int)
 
-        tmp_df = do_one_fit(years, values)
+        tmp_df, tmp_met_df = do_one_fit(years, values)
 
         tmp_df['geofips'] = \
             [geofips for i in range(0, len(tmp_df))]
         tmp_df['industry'] = \
             [attributes['industry'] for i in range(0, len(tmp_df))]
 
-        if out_df is None:
-            out_df = tmp_df
+        tmp_met_df['geofips'] = \
+            [geofips for i in range(0, len(tmp_met_df))]
+        tmp_met_df['industry'] = \
+            [attributes['industry'] for i in range(0, len(tmp_met_df))]
+
+        if data_df is None:
+            data_df = tmp_df
+            metric_df = tmp_met_df
         else:
-            out_df = pd.concat([out_df, tmp_df], ignore_index=True)
+            data_df = pd.concat([data_df, tmp_df], ignore_index=True)
+            metric_df = pd.concat([metric_df, tmp_met_df], ignore_index=True)
 
     print ''
-    return out_df
+    return data_df, metric_df
 
 
-def write_to_sql(df, name):
+def write_to_sql(df, tname, dbname):
     try:
         # print 'Connecting to database...'
         engine = create_engine(
-            "mysql+mysqldb://danielj:@localhost/forecastmycity")
+            'mysql+mysqldb://danielj:@localhost/%s' % dbname)
     except:
         print 'Error connecting to db:', sys.exc_info()[0]
         return 0
     try:
-        # print 'Writing to database table:%s'%name
-        df.to_sql(con=engine, name=name, index=False,
+        # print 'Writing to database table:%s'%tname
+        df.to_sql(con=engine, name=tname, index=False,
                   if_exists='append', flavor='mysql')
     except OperationalError as err:
         print 'Error writing to db:', sys.exc_info()[0]
@@ -508,8 +552,18 @@ def write_to_sql(df, name):
 
 
 def main(argv):
+    try:
+        if argv[0] == 'test':
+            dbname = 'test'
+        else:
+            dbname = 'forecastmycity'
+    except:
+        dbname = 'forecastmycity'
+
     industries = ['manf', 'rettrd', 'gov']
+    all_info_df = None
     all_data_df = None
+    all_metric_df = None
 
     for industry in industries:
         print 'Starting %s fits:' % industry
@@ -531,17 +585,27 @@ def main(argv):
 
         df = merge_dfs(older_df, newer_df)
 
-        result_df = do_all_fits(df, attributes)
-        print len(result_df)
+        info_df = df.drop([str(yr) for yr in range(1969, 2014)], axis=1)
+        info_df.reset_index(level=0, inplace=True)
+
+        data_df, metric_df = do_all_fits(df, attributes)
 
         if all_data_df is None:
-            all_data_df = result_df
+            all_info_df = info_df
+            all_data_df = data_df
+            all_metric_df = metric_df
         else:
-            all_data_df = pd.concat([all_data_df, result_df],
+            all_info_df = pd.concat([all_info_df, info_df],
                                     ignore_index=True)
+            all_data_df = pd.concat([all_data_df, data_df],
+                                    ignore_index=True)
+            all_metric_df = pd.concat([all_metric_df, metric_df],
+                                      ignore_index=True)
 
     print len(all_data_df), all_data_df.head()
-    write_to_sql(all_data_df, 'fit_data')
+    write_to_sql(all_info_df, 'info', dbname)
+    write_to_sql(all_data_df, 'fit_data', dbname)
+    write_to_sql(all_metric_df, 'fit_metrics', dbname)
 
     print 'done!'
     return 0

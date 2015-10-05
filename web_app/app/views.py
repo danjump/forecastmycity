@@ -1,51 +1,10 @@
 import pandas as pd
 # import numpy as np
 import pygal
+import re
 from flask import render_template, request
 from app import fmc_app
 from sqlalchemy import create_engine
-
-
-@fmc_app.route('/index')
-def index():
-    user = {'nickname': 'Miguel'}  # fake user
-    return render_template('index.html',
-                           title='Home',
-                           user=user)
-
-
-@fmc_app.route('/db')
-def cities_page():
-    engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
-    db = engine.connect()
-
-    with db:
-        cur = db.cursor()
-        cur.execute('SELECT Name FROM City LIMIT 15;')
-        query_results = cur.fetchall()
-    cities = ''
-    for result in query_results:
-        cities += result[0]
-        cities += '<br>'
-    return cities
-
-
-@fmc_app.route('/db_fancy')
-def cities_page_fancy():
-    engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
-    db = engine.connect()
-
-    with db:
-        cur = db.cursor()
-        cur.execute('SELECT Name, CountryCode, Population '
-                    'FROM City ORDER BY Population LIMIT 15;')
-
-        query_results = cur.fetchall()
-    cities = []
-    for result in query_results:
-        cities.append(dict(name=result[0],
-                      country=result[1], population=result[2]))
-    return render_template('cities.html', cities=cities)
 
 
 @fmc_app.route('/')
@@ -54,8 +13,38 @@ def cities_input():
     return render_template('input.html')
 
 
-def get_datapoints_from_sql(case, industry, geofips):
+def get_geo_name(geofips):
+    engine = create_engine("mysql+mysqldb://root:@localhost/test")
+    con = engine.connect()
+
+    query = 'SELECT DISTINCT(NewGeoName) FROM info WHERE '\
+        'GeoFIPS="%s"' % (geofips)
+
+    df = pd.read_sql(query, con=con.connection)
+    name = df.values[0][0]
+    m = re.match("[^(]+", name)
+    name = m.group()
+    print name
+
+    return name
+
+
+def get_rankings_from_sql(industry):
     engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
+    con = engine.connect()
+
+    query = 'SELECT *, '\
+        '(proj5_avg + proj5_slope) as proj5_sum FROM ranking_scores WHERE '\
+        'industry="%s"' % (industry) +\
+        'ORDER BY proj5_sum DESC LIMIT 10'
+
+    df = pd.read_sql(query, con=con.connection)
+
+    return df
+
+
+def get_datapoints_from_sql(case, industry, geofips):
+    engine = create_engine("mysql+mysqldb://root:@localhost/test")
     con = engine.connect()
 
     query = 'SELECT x, y FROM fit_data WHERE '\
@@ -71,22 +60,30 @@ def get_datapoints_from_sql(case, industry, geofips):
 def cities_output():
     industry = request.args.get('Industry')
 
-    result_list = [{'name': 'City 1', 'recent': 100, 'forecast': 110},
-                   {'name': 'City 2', 'recent': 100, 'forecast': 90}]
-
     industry = 'manf'
-    geo_list = ['31080', '16980']
+    ranking_df = get_rankings_from_sql(industry)
+
+    geo_list = ranking_df['geofips'].values
+    geo_names = []
+    result_list = []
+    for geo in geo_list:
+        geo_names.append(get_geo_name(geo))
+        past = ranking_df[ranking_df['geofips'] == geo]['past5_avg'].values[0]
+        proj = ranking_df[ranking_df['geofips'] == geo]['proj5_avg'].values[0]
+        result_list.append({'name': geo_names[-1],
+                            'past': past,
+                            'proj': proj})
 
     data = {}
     proj = {}
-    for geo in geo_list:
+    for geo in geo_list[:5]:
         data[geo] = get_datapoints_from_sql('full_data', industry, geo)
         proj[geo] = get_datapoints_from_sql('full_proj', industry, geo)
 
     chart = pygal.XY(disable_xml_declaration=True, width=800, height=350)
     chart.title = 'Browser usage evolution'
     chart.x_labels = map(int, range(1965, 2025, 5))
-    for geo in geo_list:
+    for geo in geo_list[:5]:
         chart.add('Data', data[geo])
         chart.add('Projection', proj[geo])
 

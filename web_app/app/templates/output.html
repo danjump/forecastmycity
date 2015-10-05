@@ -11,7 +11,7 @@
 <meta name="author" content="">
 <link rel="icon" href="../../favicon.ico">
 
-<title>Starter Template for Bootstrap</title>
+<title>Forecast My City</title>
 
 <!-- Bootstrap core CSS -->
 <link href="../static/css/bootstrap.min.css" rel="stylesheet">
@@ -64,16 +64,17 @@
         <p class="lead">Below is a list of the cities with the top economy in the {{ industry }} industry.</p>
     </div>
 
-    <div class="col-lg-5">
+    <div class="col-lg-9">
     <table class="table table-hover">
-    <tr><th>Name</th><th>Recent Economy</th><th>Projected Economy</th></tr>
+    <tr><th></th><th colspan="2">Earnings Compared to Average (% higher/lower)</th></tr>
+    <tr><th>Metropolitan Area</th><th>Past</th><th>Projected</th></tr>
     {% for result in result_list %}
-    <tr><td>{{ result['name'] }}</td><td>{{ result['recent']}}</td><td> {{ result['forecast'] }}</td></tr>
+    <tr><td>{{ result['name'] }}</td><td>{{ result['past']}}</td><td> {{ result['proj'] }}</td></tr>
     {% endfor %}
     </table>
     </div>
 
-    <div class="col-lg-6">
+    <div class="col-lg-9">
         {{ chart.render()| safe }}
     </div>
 

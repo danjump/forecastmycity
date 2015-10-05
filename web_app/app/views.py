@@ -14,7 +14,7 @@ def cities_input():
 
 
 def get_geo_name(geofips):
-    engine = create_engine("mysql+mysqldb://root:@localhost/test")
+    engine = create_engine("mysql+mysqldb://root:@localhost/forecastmycity")
     con = engine.connect()
 
     query = 'SELECT DISTINCT(NewGeoName) FROM info WHERE '\
@@ -30,7 +30,7 @@ def get_geo_name(geofips):
 
 
 def get_rankings_from_sql(industry):
-    engine = create_engine("mysql+mysqldb://root:@localhost/ecotest")
+    engine = create_engine("mysql+mysqldb://root:@localhost/forecastmycity")
     con = engine.connect()
 
     query = 'SELECT *, '\
@@ -44,7 +44,7 @@ def get_rankings_from_sql(industry):
 
 
 def get_datapoints_from_sql(case, industry, geofips):
-    engine = create_engine("mysql+mysqldb://root:@localhost/test")
+    engine = create_engine("mysql+mysqldb://root:@localhost/forecastmycity")
     con = engine.connect()
 
     query = 'SELECT x, y FROM fit_data WHERE '\
@@ -81,7 +81,7 @@ def cities_output():
         proj[geo] = get_datapoints_from_sql('full_proj', industry, geo)
 
     chart = pygal.XY(disable_xml_declaration=True, width=800, height=350)
-    chart.title = 'Browser usage evolution'
+    chart.title = '%s Earnings Compared to Average' % ind_name
     chart.x_labels = map(int, range(1965, 2025, 5))
     for geo in geo_list[:5]:
         chart.add('Data', data[geo])

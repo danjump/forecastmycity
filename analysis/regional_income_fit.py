@@ -5,7 +5,6 @@ import signal
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import re
 # import sklearn.svm as svm
 # from sklearn.grid_search import GridSearchCV
 import sklearn.linear_model as linear_model
@@ -24,125 +23,6 @@ class MyTimeoutException(Exception):
 def handler(signum, frame):
     print "Fit ran out of time!"
     raise MyTimeoutException("fit timeout")
-
-
-def load_data(which, industry):
-    if which == 'newer':
-        infile = '../data/BEA-RegionalIncomeByIndustry/CA5N_2001_2013_MSA.csv'
-        if industry == 'manf':
-            industry_code = 500  # manf
-        elif industry == 'rettrd':
-            industry_code = 700  # rettrd
-        elif industry == 'gov':
-            industry_code = 2000  # gov
-        year_cols = [str(yr) for yr in range(2001, 2014)]
-    elif which == 'older':
-        infile = '../data/BEA-RegionalIncomeByIndustry/CA5_1969_2000_MSA.csv'
-        if industry == 'manf':
-            industry_code = 400  # manf
-        elif industry == 'rettrd':
-            industry_code = 620  # rettrd
-        elif industry == 'gov':
-            industry_code = 900  # gov
-        year_cols = [str(yr) for yr in range(1969, 2001)]
-
-    df = pd.read_csv(infile, low_memory=False)
-
-    # select a specific industry
-    df = df[df['LineCode'] == industry_code]
-
-    # utility function to remove characters from number strings
-    def clean_data_entry(x):
-        m = re.match("\d+", x)
-        # i.e. - if the string starts with
-        if m:
-            return float(m.group())
-        else:
-            return np.nan
-
-    df[year_cols] = df[year_cols].applymap(clean_data_entry)
-
-    return df
-
-
-def clean_nans(df, which):
-    if which == 'newer':
-        year_cols = [str(yr) for yr in range(2001, 2014)]
-    elif which == 'older':
-        year_cols = [str(yr) for yr in range(1969, 2001)]
-
-    nan_indexes = pd.isnull(df[year_cols]).any(1).nonzero()[0]
-
-    nan_df = df.iloc[nan_indexes]
-    df.drop(df.iloc[nan_indexes].index, inplace=True)
-
-    return df, nan_df
-
-
-def relative_normalize(df, which):
-    if which == 'newer':
-        year_cols = [str(yr) for yr in range(2001, 2014)]
-    elif which == 'older':
-        year_cols = [str(yr) for yr in range(1969, 2001)]
-
-    means_df = df[year_cols].mean()
-
-    for year in year_cols:
-        df[year] = df[year]/means_df[year]-1
-
-    return df, means_df
-
-
-def merge_dfs(older_df, newer_df):
-    # change to index dataframes by geofips for consistent merging
-    older_df.set_index('GeoFIPS', inplace=True, verify_integrity=True)
-
-    newer_df.set_index('GeoFIPS', inplace=True, verify_integrity=True)
-
-    # split off conflicting columns from the 2 dfs.
-    conflicting_cols = ['GeoName',
-                        'Region',
-                        'Table',
-                        'LineCode',
-                        'IndustryClassification',
-                        'Description']
-    conflicting_col_older_df = older_df[conflicting_cols]
-    conflicting_col_older_df.index = older_df.index
-    which = 'Old'
-    rename_cols = ['%sGeoName' % which,
-                   '%sRegion' % which,
-                   '%sTable' % which,
-                   '%sLineCode' % which,
-                   '%sIndustryClassificiation' % which,
-                   '%sDescription' % which]
-    conflicting_col_older_df.columns = rename_cols
-    conflicting_col_newer_df = newer_df[conflicting_cols]
-    conflicting_col_newer_df.index = newer_df.index
-    which = 'New'
-    rename_cols = ['%sGeoName' % which,
-                   '%sRegion' % which,
-                   '%sTable' % which,
-                   '%sLineCode' % which,
-                   '%sIndustryClassificiation' % which,
-                   '%sDescription' % which]
-    conflicting_col_newer_df.columns = rename_cols
-
-    # now drop conflicting cols from the 2 df's
-    newer_df.drop(conflicting_cols, axis=1, inplace=True)
-    older_df.drop(conflicting_cols, axis=1, inplace=True)
-
-    # merge conflicting dfs
-    extras_merged_inner = pd.concat(
-        [conflicting_col_older_df, conflicting_col_newer_df],
-        axis=1, join='inner')
-
-    # merge data part of dfs
-    data_merged_inner = pd.concat([older_df, newer_df], axis=1, join='inner')
-
-    # merge data back with other part for full df
-    merged_df = pd.concat([extras_merged_inner, data_merged_inner], axis=1)
-
-    return merged_df
 
 
 def get_data_ranges(X, Y, which_case, window, ntest):
@@ -282,8 +162,8 @@ def dofit_linreg(X, Y, which_case='both'):
         print 'comp_time:', comp_time_sec
         '''
 
-        plt.plot_date(test_data['x'], test_data['y'], '-o', color='green')
         '''
+        plt.plot_date(test_data['x'], test_data['y'], '-o', color='green')
         plt.plot_date(
             test_data['x'], test_data['ypred'], '--', color='red')
 
@@ -399,28 +279,32 @@ def dofit_AR_linreg(X, Y, which_case='both'):
         print 'comp_time:', comp_time_sec
         '''
 
-        '''
         plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
-        plt.plot_date(
-            test_data['X'][window:], test_data['ypred'], '--', color='red')
+        # plt.plot_date(
+        #    test_data['X'][window:], test_data['ypred'], '--', color='red')
 
         plt.plot_date(
             test_data['X_test'], test_data['Y_test'], '-o', color='green')
-        plt.plot_date(
-            test_data['X_test'], test_data['ypred_test'], '--', color='red')
+        # plt.plot_date(
+        #    test_data['X_test'], test_data['ypred_test'], '--', color='red')
 
         plt.plot_date(
             full_data['X'][window:], full_data['ypred'], '--', color='blue')
 
+        # plt.plot_date(
+        #    test_data['X_proj'], test_data['yproj'], '--', color='red')
         plt.plot_date(
-            test_data['X_proj'], test_data['yproj'], '--', color='red')
-        plt.plot_date(
-            full_data['X_proj'], full_data['yproj'], '--', color='blue')
+            full_data['X_proj'], full_data['yproj'], '--', color='red')
         plt.xlim(1967, 2016+pred_len)
         plt.xticks(np.arange(1970, 2015+pred_len, 5),
                    np.arange(1970, 2015+pred_len, 5).astype(str))
+        for tick in plt.gca().xaxis.get_major_ticks():
+            tick.label.set_fontsize(24)
+            tick.label.set_rotation('vertical')
+        for tick in plt.gca().yaxis.get_major_ticks():
+            tick.label.set_fontsize(24)
+        plt.subplots_adjust(bottom=.2)
         plt.show()
-        '''
 
         return result_df, metric_df
     else:
@@ -474,12 +358,12 @@ def do_one_fit(X, Y):
         signal.signal(signal.SIGALRM, handler)
         signal.alarm(425)
 
-        AR_df, AR_met_df = dofit_AR_linreg(X, Y)
+        AR_df, AR_met_df = dofit_AR_linreg(X.copy(), Y.copy())
 
         AR_df['method'] = ['AR_linreg' for i in range(0, len(AR_df))]
         AR_met_df['method'] = ['AR_linreg' for i in range(0, len(AR_met_df))]
 
-        lr_df, lr_met_df = dofit_linreg(X, Y)
+        lr_df, lr_met_df = dofit_linreg(X.copy(), Y.copy())
 
         lr_df['method'] = ['linreg' for i in range(0, len(lr_df))]
         lr_met_df['method'] = ['linreg' for i in range(0, len(lr_met_df))]
@@ -532,7 +416,7 @@ def do_all_fits(input_df, attributes):
     return data_df, metric_df
 
 
-def write_to_sql(df, tname, dbname):
+def write_to_sql(df, tname, dbname, exist_cond):
     try:
         # print 'Connecting to database...'
         engine = create_engine(
@@ -543,12 +427,31 @@ def write_to_sql(df, tname, dbname):
     try:
         # print 'Writing to database table:%s'%tname
         df.to_sql(con=engine, name=tname, index=False,
-                  if_exists='append', flavor='mysql')
+                  if_exists=exist_cond, flavor='mysql')
     except OperationalError as err:
         print 'Error writing to db:', sys.exc_info()[0]
         print err.message
         return 0
     return 1
+
+
+def read_from_sql(tname, dbname, industry):
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/%s" % dbname)
+    con = engine.connect()
+
+    if industry == 'manf':
+        ind_name = 'Manufacturing'
+    if industry == 'rettrd':
+        ind_name = 'Retail trade'
+    if industry == 'gov':
+        ind_name = 'Government and government enterprises'
+
+    query = 'SELECT * FROM dataset WHERE '\
+        'NewDescription like "%%%s%%"' % ind_name
+
+    df = pd.read_sql(query, con=con.connection)
+
+    return df
 
 
 def main(argv):
@@ -572,23 +475,12 @@ def main(argv):
                       'wind': 7,
                       'ntst': 10}
 
-        # get and clean data
-        older_df = load_data('older', attributes['industry'])
-        newer_df = load_data('newer', attributes['industry'])
+        test_df = read_from_sql('dataset', dbname, industry)
 
-        older_df, old_dropped_df = clean_nans(older_df, 'older')
-        newer_df, new_dropped_df = clean_nans(newer_df, 'newer')
-
-        # normalize values to a relative quantaty
-        older_df, older_mean_df = relative_normalize(older_df, 'older')
-        newer_df, newer_mean_df = relative_normalize(newer_df, 'newer')
-
-        df = merge_dfs(older_df, newer_df)
-
-        info_df = df.drop([str(yr) for yr in range(1969, 2014)], axis=1)
+        info_df = test_df.drop([str(yr) for yr in range(1969, 2014)], axis=1)
         info_df.reset_index(level=0, inplace=True)
 
-        data_df, metric_df = do_all_fits(df, attributes)
+        data_df, metric_df = do_all_fits(test_df, attributes)
 
         if all_data_df is None:
             all_info_df = info_df
@@ -603,9 +495,9 @@ def main(argv):
                                       ignore_index=True)
 
     print len(all_data_df), all_data_df.head()
-    write_to_sql(all_info_df, 'info', dbname)
-    write_to_sql(all_data_df, 'fit_data', dbname)
-    write_to_sql(all_metric_df, 'fit_metrics', dbname)
+    write_to_sql(all_info_df, 'info', dbname, 'replace')
+    write_to_sql(all_data_df, 'fit_data', dbname, 'replace')
+    write_to_sql(all_metric_df, 'fit_metrics', dbname, 'replace')
 
     print 'done!'
     return 0

@@ -3,6 +3,9 @@ import bea_api_wrapper as bea
 #  import numpy as np
 #  import pandas as pd
 import sys
+import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 
 
 def get_regdata_pcpi():
@@ -66,6 +69,8 @@ def get_reginc_data(table):
         outfile = 'data/reginc_%s.csv' % table
         df.to_csv(outfile)
 
+        return df
+
 
 def get_regprod_rpcgdp():
 
@@ -109,11 +114,40 @@ def get_regprod_rpcgdp():
         df.to_csv(outfile)
 
 
+def write_to_sql(df, tname, dbname, exist_cond):
+    try:
+        # print 'Connecting to database...'
+        engine = create_engine(
+            'mysql+mysqldb://danielj:@localhost/%s' % dbname)
+    except:
+        print 'Error connecting to db:', sys.exc_info()[0]
+        return 0
+    try:
+        # print 'Writing to database table:%s'%tname
+        df.to_sql(con=engine, name=tname, index=False,
+                  if_exists=exist_cond, flavor='mysql')
+    except OperationalError as err:
+        print 'Error writing to db:', sys.exc_info()[0]
+        print err.message
+        return 0
+    return 1
+
+
 def main(argv):
     # get_regdata_pcpi()
     print '\n\n'
     # get_regprod_rpcgdp()
-    get_reginc_data('CA5N')
+    # get_reginc_data('CA5N')
+    dfn = get_reginc_data('CA25N')
+    df = get_reginc_data('CA25')
+
+    print len(dfn), len(df)
+
+    bothdf = pd.concat([df, dfn], axis=0, ignore_index=True)
+
+    print len(bothdf), bothdf.columns
+
+    write_to_sql(bothdf, 'employment_dataset', 'forecastmycity', 'replace')
 
 
 if __name__ == "__main__":

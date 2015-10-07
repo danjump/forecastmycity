@@ -164,21 +164,21 @@ def dofit_linreg(X, Y, which_case='both'):
 
         '''
         plt.plot_date(test_data['x'], test_data['y'], '-o', color='green')
-        plt.plot_date(
-            test_data['x'], test_data['ypred'], '--', color='red')
+        # plt.plot_date(
+        #    test_data['x'], test_data['ypred'], '--', color='red')
 
         plt.plot_date(
             test_data['xtest'], test_data['ytest'], '-o', color='green')
-        plt.plot_date(
-            test_data['xtest'], test_data['ypred_test'], '--', color='red')
+        # plt.plot_date(
+        #    test_data['xtest'], test_data['ypred_test'], '--', color='red')
 
         plt.plot_date(
             full_data['x'], full_data['ypred'], '--', color='blue')
 
+        # plt.plot_date(
+        #    test_data['xproj'], test_data['yproj'], '--', color='red')
         plt.plot_date(
-            test_data['xproj'], test_data['yproj'], '--', color='red')
-        plt.plot_date(
-            full_data['xproj'], full_data['yproj'], '--', color='blue')
+            full_data['xproj'], full_data['yproj'], '--', color='red')
         plt.xlim(1967, 2016+pred_len)
         plt.xticks(np.arange(1970, 2015+pred_len, 5),
                    np.arange(1970, 2015+pred_len, 5).astype(str))

@@ -61,6 +61,7 @@ def cities_output():
     industry = request.args.get('Industry')
 
     industry = 'manf'
+    ind_name = 'Manufacturing'
     ranking_df = get_rankings_from_sql(industry)
 
     geo_list = ranking_df['geofips'].values
@@ -87,5 +88,5 @@ def cities_output():
         chart.add('Data', data[geo])
         chart.add('Projection', proj[geo])
 
-    return render_template('output.html', industry=industry,
+    return render_template('output.html', industry=ind_name,
                            result_list=result_list, chart=chart)

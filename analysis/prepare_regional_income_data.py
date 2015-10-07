@@ -22,9 +22,8 @@ def load_data(which):
     return df
 
 
-def select_scale_ind(industry, df, which):
+def select_industry(df, industry, which):
     if which == 'newer':
-        year_cols = [str(yr) for yr in range(2001, 2014)]
         if industry == 'manf':
             industry_code = 500  # manf
         elif industry == 'rettrd':
@@ -32,7 +31,6 @@ def select_scale_ind(industry, df, which):
         elif industry == 'gov':
             industry_code = 2000  # gov
     elif which == 'older':
-        year_cols = [str(yr) for yr in range(1969, 2001)]
         if industry == 'manf':
             industry_code = 400  # manf
         elif industry == 'rettrd':
@@ -43,47 +41,80 @@ def select_scale_ind(industry, df, which):
     # select a specific industry
     ind_df = df[df['LineCode'] == industry_code]
 
-    for geo in ind_df['GeoFIPS'].values:
-        ear_ratio = []
-        res_ratio = []
-        nof_ratio = []
-        for year in year_cols:
-            nof = df[(df['GeoFIPS'] == geo) &
-                     (df['LineCode'] == 82)][year].values[0]
-            pop = df[(df['GeoFIPS'] == geo) &
-                     (df['LineCode'] == 20)][year].values[0]
-            ind = df[(df['GeoFIPS'] == geo) &
-                     (df['LineCode'] == 82)][year].values[0]
-            ear_ratio.append(ear / pi)
-            res_ratio.append(res / pi)
-            nof_ratio.append(nof / pi)
-
-        print 'ear: ', ['%.3f' % x for x in ear_ratio][::2]
-        print 'res: ', ['%.3f' % x for x in res_ratio][::2]
-        print 'nof: ', ['%.3f' % x for x in nof_ratio][::2]
-
     return ind_df
 
 
-def clean_nans(df, which):
+def read_employment_from_sql(code, geo, dbname='test'):
+    engine = create_engine("mysql+mysqldb://danielj:@localhost/%s" % dbname)
+    con = engine.connect()
+
+    query = 'SELECT DataValue, TimePeriod FROM employment_dataset WHERE '\
+        'Code like "%%%s%%" and GeoFIPS = "%s"' % (code, geo)
+
+    df = pd.read_sql(query, con=con.connection)
+
+    return df
+
+
+def scale_by_employment(ear_df):
+    nan_count = 0
+    for i in range(len(ear_df)):
+        code = re.sub('CA5', 'CA25', ear_df.iloc[i]['Table']) + '-' + \
+            '%d' % ear_df.iloc[i]['LineCode']
+        geo = ear_df.iloc[i]['GeoFIPS']
+
+        emp_df = read_employment_from_sql(code, geo)
+
+        def clean_data_entry(x):
+            try:
+                x = re.sub(',', '', x)
+                m = re.match("\d+", x)
+                # i.e. - if the string starts with
+                if m:
+                    return float(m.group())
+                else:
+                    return np.nan
+            except:
+                return x
+
+        was_nan = False
+        for data, year in emp_df.values:
+            emp = clean_data_entry(data)
+
+            if not np.isnan(emp):
+                ear_df.loc[ear_df.index[i], year] = ear_df.iloc[i][year] / emp
+            else:
+                was_nan = True
+                ear_df.loc[ear_df.index[i], year] = np.nan
+
+        if was_nan:
+            nan_count += 1
+            print geo, code
+
+    print nan_count
+    return ear_df
+
+
+def clean_nans(df, which, str_check=True):
     if which == 'newer':
         year_cols = [str(yr) for yr in range(2001, 2014)]
     elif which == 'older':
         year_cols = [str(yr) for yr in range(1969, 2001)]
 
-    # utility function to remove characters from number strings
-    def clean_data_entry(x):
-        try:
-            m = re.match("\d+", x)
-            # i.e. - if the string starts with
-            if m:
-                return float(m.group())
-            else:
-                return np.nan
-        except:
-            return x
+    if str_check:
+        # utility function to remove characters from number strings
+        def clean_data_entry(x):
+            try:
+                m = re.match("\d+", x)
+                # i.e. - if the string starts with
+                if m:
+                    return float(m.group())
+                else:
+                    return np.nan
+            except:
+                return x
 
-    df[year_cols] = df[year_cols].applymap(clean_data_entry)
+        df[year_cols] = df[year_cols].applymap(clean_data_entry)
 
     nan_indexes = pd.isnull(df[year_cols]).any(1).nonzero()[0]
 
@@ -202,12 +233,30 @@ def main(argv):
         older_df, old_dropped_df = clean_nans(older_df, 'older')
         newer_df, new_dropped_df = clean_nans(newer_df, 'newer')
 
-        older_df = select_scale_ind(attributes['industry'], older_df, 'older')
-        newer_df = select_scale_ind(attributes['industry'], newer_df, 'newer')
+        print older_df.head()
+
+        older_df = select_industry(older_df, attributes['industry'], 'older')
+        newer_df = select_industry(newer_df, attributes['industry'], 'newer')
+
+        print older_df.head()
+
+        older_df = scale_by_employment(older_df)
+        newer_df = scale_by_employment(newer_df)
+
+        print older_df.head()
+        print len(older_df)
+
+        older_df, old_dropped_df = clean_nans(older_df, 'older', str_check=True)
+        newer_df, new_dropped_df = clean_nans(newer_df, 'newer', str_check=True)
+
+        print len(older_df)
 
         # normalize values to a relative quantaty
         older_df, older_mean_df = relative_normalize(older_df, 'older')
         newer_df, newer_mean_df = relative_normalize(newer_df, 'newer')
+
+        print len(older_df)
+        print older_df.head()
 
         df = merge_dfs(older_df, newer_df)
 

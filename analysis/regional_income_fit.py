@@ -280,6 +280,7 @@ def dofit_AR_linreg(X, Y, which_case='both'):
         '''
 
         plt.plot_date(test_data['X'], test_data['Y'], '-o', color='green')
+        '''
         # plt.plot_date(
         #    test_data['X'][window:], test_data['ypred'], '--', color='red')
 
@@ -305,6 +306,7 @@ def dofit_AR_linreg(X, Y, which_case='both'):
             tick.label.set_fontsize(24)
         plt.subplots_adjust(bottom=.2)
         plt.show()
+        '''
 
         return result_df, metric_df
     else:
@@ -446,7 +448,7 @@ def read_from_sql(tname, dbname, industry):
     if industry == 'gov':
         ind_name = 'Government and government enterprises'
 
-    query = 'SELECT * FROM dataset WHERE '\
+    query = 'SELECT * FROM %s WHERE ' % tname + \
         'NewDescription like "%%%s%%"' % ind_name
 
     df = pd.read_sql(query, con=con.connection)
@@ -475,12 +477,16 @@ def main(argv):
                       'wind': 7,
                       'ntst': 10}
 
-        test_df = read_from_sql('dataset', dbname, industry)
+        test_df = read_from_sql('dataset_pop', dbname, industry)
 
         info_df = test_df.drop([str(yr) for yr in range(1969, 2014)], axis=1)
-        info_df.reset_index(level=0, inplace=True)
+        # info_df.reset_index(level=0, inplace=True)
+        print 'test', test_df.head
+        test_df.set_index('GeoFIPS', inplace=True)
+        print 'test', test_df.head
 
         data_df, metric_df = do_all_fits(test_df, attributes)
+        print 'data', data_df.head
 
         if all_data_df is None:
             all_info_df = info_df
@@ -495,9 +501,9 @@ def main(argv):
                                       ignore_index=True)
 
     print len(all_data_df), all_data_df.head()
-    write_to_sql(all_info_df, 'info', dbname, 'replace')
-    write_to_sql(all_data_df, 'fit_data', dbname, 'replace')
-    write_to_sql(all_metric_df, 'fit_metrics', dbname, 'replace')
+    write_to_sql(all_info_df, 'info_pop', dbname, 'replace')
+    write_to_sql(all_data_df, 'fit_data_pop', dbname, 'replace')
+    write_to_sql(all_metric_df, 'fit_metrics_pop', dbname, 'replace')
 
     print 'done!'
     return 0

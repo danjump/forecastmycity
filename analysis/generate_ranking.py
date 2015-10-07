@@ -12,7 +12,7 @@ def get_geo_list(industry):
     engine = create_engine("mysql+mysqldb://danielj:@localhost/forecastmycity")
     con = engine.connect()
 
-    query = 'SELECT DISTINCT(geofips) FROM fit_data WHERE '\
+    query = 'SELECT DISTINCT(geofips) FROM fit_data_pop WHERE '\
         'industry="%s"' % industry
 
     df = pd.read_sql(query, con=con.connection)
@@ -24,7 +24,7 @@ def get_one_dataset(geofips, industry, method, which_case):
     engine = create_engine("mysql+mysqldb://danielj:@localhost/forecastmycity")
     con = engine.connect()
 
-    query = 'SELECT x, y FROM fit_data WHERE '\
+    query = 'SELECT x, y FROM fit_data_pop WHERE '\
         'which_case="%s" and geofips="%s" and industry="%s" and method="%s"' %\
         (which_case, geofips, industry, method)
 
@@ -94,7 +94,7 @@ def write_rankings_to_sql(geofips, industry,
         print 'Error connecting to db:', sys.exc_info()[0]
         return 0
     try:
-        df.to_sql(con=engine, name='ranking_scores', index=False,
+        df.to_sql(con=engine, name='ranking_scores_pop', index=False,
                   if_exists='append', flavor='mysql')
     except OperationalError as err:
         print 'Error writing to db:', sys.exc_info()[0]

@@ -1,4 +1,8 @@
-Skeleton overview of project:
+This is my project completed as a fellow of insight data science. It consists of an analysis and an interactive web app exploring the results of this analysis. This app can be found at:
+
+www.forecastmy.city
+
+Here is some half-hearted documentation of the project code:
 
 Data Analysis --------------------------------------------
 Lots of raw data exploration in: 
